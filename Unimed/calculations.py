@@ -40,6 +40,9 @@ def save_data(df, usuario):
     # Certifique-se de que a coluna 'Justificativa' existe antes de salvar
     if 'Justificativa' not in df.columns:
         df['Justificativa'] = ""  # Se não existir, adiciona a coluna com valores vazios
+        
+    if 'Nº DA OAB' in df.columns:
+        df = df.drop(columns=['Nº DA OAB'])
 
     # Remove registros com 'USUÁRIO QUE CONCLUIU A TAREFA' igual a 'robohub_amil'
     if 'USUÁRIO QUE CONCLUIU A TAREFA' in df.columns:
