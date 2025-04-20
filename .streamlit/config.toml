@@ -1,0 +1,10 @@
+[theme]
+base="light"
+primaryColor="#ff521a"
+
+[client]
+toolbarMode = "minimal"
+
+[ui]
+hideTopBar = true
+    
