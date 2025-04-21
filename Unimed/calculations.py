@@ -4,6 +4,7 @@ import plotly.express as px
 import math
 import streamlit as st
 from io import BytesIO
+import requests
 from datetime import timedelta
 
 def load_data(usuario):
@@ -35,21 +36,71 @@ def load_data(usuario):
     return df_total
 
 def save_data(df, usuario):
-    parquet_file = f'dados_acumulados_{usuario}.parquet'  # Nome do arquivo específico do usuário
+    parquet_file = f'dados_acumulados_{usuario}.parquet'
 
-    # Certifique-se de que a coluna 'Justificativa' existe antes de salvar
+    # 🧼 PRÉ-PROCESSAMENTO DO DATAFRAME
+
+    # Garante que a coluna 'Justificativa' exista
     if 'Justificativa' not in df.columns:
-        df['Justificativa'] = ""  # Se não existir, adiciona a coluna com valores vazios
-        
+        df['Justificativa'] = ""
+
+    # Remove a coluna 'Nº DA OAB' se existir
     if 'Nº DA OAB' in df.columns:
         df = df.drop(columns=['Nº DA OAB'])
 
-    # Remove registros com 'USUÁRIO QUE CONCLUIU A TAREFA' igual a 'robohub_amil'
+    # Remove registros automáticos do robô
     if 'USUÁRIO QUE CONCLUIU A TAREFA' in df.columns:
-        df = df[(df['USUÁRIO QUE CONCLUIU A TAREFA'] != 'robohub_amil') & (df['USUÁRIO QUE CONCLUIU A TAREFA'].notnull())]
-    
-    # Salva o DataFrame no formato Parquet
+        df = df[
+            (df['USUÁRIO QUE CONCLUIU A TAREFA'].notnull()) &
+            (df['USUÁRIO QUE CONCLUIU A TAREFA'].str.lower() != 'robohub_amil')
+        ]
+
+    # 📝 SALVA O ARQUIVO LOCALMENTE
     df.to_parquet(parquet_file, index=False)
+
+    # 🚀 ENVIO AUTOMÁTICO PARA O GITHUB
+
+    # Lê as variáveis de ambiente (deixe configuradas no Render ou .env local)
+    token = os.getenv("GITHUB_TOKEN")
+    repo = os.getenv("GITHUB_REPO")
+    branch = os.getenv("GITHUB_BRANCH", "main")
+
+    if not all([token, repo]):
+        print("⚠️ Token ou repositório GitHub não configurados. Pulando upload.")
+        return
+
+    # Caminho na API do GitHub
+    api_url = f"https://api.github.com/repos/{repo}/contents/{parquet_file}"
+
+    # Lê o arquivo .parquet e converte em base64
+    with open(parquet_file, "rb") as f:
+        content = base64.b64encode(f.read()).decode()
+
+    # Verifica se o arquivo já existe no repositório (busca o SHA)
+    response = requests.get(api_url, headers={"Authorization": f"token {token}"})
+    sha = response.json().get("sha") if response.status_code == 200 else None
+
+    # Monta o payload para o commit
+    payload = {
+        "message": f"Atualizando {parquet_file}",
+        "content": content,
+        "branch": branch
+    }
+    if sha:
+        payload["sha"] = sha
+
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+    # Faz o PUT para criar ou atualizar o arquivo no GitHub
+    r = requests.put(api_url, json=payload, headers=headers)
+
+    if r.status_code in [200, 201]:
+        print(f"✅ {parquet_file} atualizado no GitHub.")
+    else:
+        print(f"❌ Erro ao atualizar {parquet_file} no GitHub:", r.text)
 
 def calcular_tmo_por_dia(df):
     df['Dia'] = pd.to_datetime(df['DATA DE CONCLUSÃO DA TAREFA']).dt.date
