@@ -8,119 +8,140 @@ import requests
 import base64
 from datetime import timedelta
 
-def load_data(usuario):
-    parquet_file = f'dados_acumulados_{usuario}.parquet'  # Caminho do arquivo Parquetaa
-    
+def load_data(usuario: str) -> pd.DataFrame:
+    """
+    Carrega os dados de um arquivo .parquet baseado no nome do usuário.
+    Se o arquivo não existir, cria um novo com colunas padrão.
+    """
+    parquet_file = f'dados_acumulados_{usuario}.parquet'
+
     try:
         if os.path.exists(parquet_file):
             df_total = pd.read_parquet(parquet_file)
-            
-            # Verifica se a coluna 'Justificativa' existe, caso contrário, adiciona ela
+
             if 'Justificativa' not in df_total.columns:
-                df_total['Justificativa'] = ""  # Adiciona a coluna com valores vazios
+                df_total['Justificativa'] = ""
         else:
             raise FileNotFoundError
-    
+
     except (FileNotFoundError, ValueError, OSError):
-        # Cria um DataFrame vazio com a coluna 'Justificativa' e salva um novo arquivo
+        st.toast("📁 Arquivo não encontrado ou corrompido. Criando novo arquivo vazio.")
         df_total = pd.DataFrame(columns=[
-            'NÚMERO DO PROTOCOLO', 
-            'USUÁRIO QUE CONCLUIU A TAREFA', 
-            'SITUAÇÃO DA TAREFA', 
-            'TEMPO MÉDIO OPERACIONAL', 
-            'DATA DE CONCLUSÃO DA TAREFA', 
+            'NÚMERO DO PROTOCOLO',
+            'USUÁRIO QUE CONCLUIU A TAREFA',
+            'SITUAÇÃO DA TAREFA',
+            'TEMPO MÉDIO OPERACIONAL',
+            'DATA DE CONCLUSÃO DA TAREFA',
             'FINALIZAÇÃO',
-            'Justificativa'  # Inclui a coluna de justificativa ao criar um novo DataFrame
+            'Justificativa'
         ])
         df_total.to_parquet(parquet_file, index=False)
-    
+
     return df_total
 
-def save_data(df, usuario):
+def save_data(df: pd.DataFrame, usuario: str) -> bool:
+    """
+    Salva os dados do DataFrame localmente em formato Parquet, remove robôs e duplicatas reais
+    (comparadas com o histórico) e realiza upload para o GitHub.
+    """
     parquet_file = f'dados_acumulados_{usuario}.parquet'
 
-    # 🧼 PRÉ-PROCESSAMENTO DO DATAFRAME
-
-    # Garante que a coluna 'Justificativa' exista
     if 'Justificativa' not in df.columns:
         df['Justificativa'] = ""
 
-    # Remove a coluna 'Nº DA OAB' se existir
-    if 'Nº DA OAB' in df.columns:
-        df = df.drop(columns=['Nº DA OAB'])
+    df = df.drop(columns=['Nº DA OAB'], errors='ignore')
 
-    # Remove registros automáticos do robô
+    # Remove registros de robôs
     if 'USUÁRIO QUE CONCLUIU A TAREFA' in df.columns:
         df = df[
-            (df['USUÁRIO QUE CONCLUIU A TAREFA'].notnull()) &
-            (df['USUÁRIO QUE CONCLUIU A TAREFA'].str.lower() != 'robohub_amil')
+            df['USUÁRIO QUE CONCLUIU A TAREFA'].notna() &
+            ~df['USUÁRIO QUE CONCLUIU A TAREFA'].str.lower().isin(['robohub_amil', 'robohub_uni'])
         ]
 
-    # 📝 SALVA O ARQUIVO LOCALMENTE
-    df.to_parquet(parquet_file, index=False)
+    # Carrega dados existentes
+    df_existente = load_data(usuario)
 
-    # 🚀 ENVIO AUTOMÁTICO PARA O GITHUB
+    # Verifica duplicatas reais (dados do upload que já existem no histórico)
+    duplicatas = pd.merge(df, df_existente, how='inner')
+    if not duplicatas.empty:
+        st.toast(f"🧹 {len(duplicatas)} linha(s) do novo arquivo já existiam no histórico e foram ignoradas.")
 
-    # Lê as variáveis de ambiente
+    # Junta os dados e remove duplicatas completas
+    df_total = pd.concat([df_existente, df], ignore_index=True)
+    df_total.drop_duplicates(keep='first', inplace=True)
+
+    # 🔧 Conversão leve de colunas específicas que podem gerar erro no Parquet
+    colunas_problema = ['CÓDIGO DO BENEFICIÁRIO', 'CPF', 'CNPJ', 'ID PROJURIS']
+    for col in colunas_problema:
+        if col in df_total.columns:
+            df_total[col] = df_total[col].astype(str)
+
+    # Salva o arquivo final
+    df_total.to_parquet(parquet_file, index=False)
+    st.toast(f"💾 Arquivo '{parquet_file}' salvo localmente com sucesso.")
+
+    # Upload para GitHub
     token = os.getenv("GITHUB_TOKEN")
     repo = os.getenv("GITHUB_REPO")
     branch = os.getenv("GITHUB_BRANCH", "main")
 
     if not all([token, repo]):
-        print("⚠️ Token ou repositório GitHub não configurados. Pulando upload.")
+        st.toast("⚠️ Token ou repositório GitHub não configurados. Upload não realizado.")
         return False
 
-    # Caminho na API do GitHub
     api_url = f"https://api.github.com/repos/{repo}/contents/{parquet_file}"
 
-    # Lê o arquivo .parquet e converte em base64
-    with open(parquet_file, "rb") as f:
-        content = base64.b64encode(f.read()).decode()
+    try:
+        with open(parquet_file, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
 
-    # Verifica se o arquivo já existe no repositório (busca o SHA)
-    response = requests.get(api_url, headers={"Authorization": f"token {token}"})
-    sha = response.json().get("sha") if response.status_code == 200 else None
+        response = requests.get(api_url, headers={"Authorization": f"token {token}"})
+        sha = response.json().get("sha") if response.status_code == 200 else None
 
-    # Monta o payload para o commit
-    payload = {
-        "message": f"Atualizando {parquet_file}",
-        "content": content,
-        "branch": branch
-    }
-    if sha:
-        payload["sha"] = sha
+        payload = {
+            "message": f"Atualizando {parquet_file}",
+            "content": content,
+            "branch": branch
+        }
+        if sha:
+            payload["sha"] = sha
 
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3+json"
-    }
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
 
-    # Faz o PUT para criar ou atualizar o arquivo no GitHub
-    r = requests.put(api_url, json=payload, headers=headers)
+        r = requests.put(api_url, json=payload, headers=headers)
 
-    if r.status_code in [200, 201]:
-        print(f"✅ {parquet_file} atualizado no GitHub.")
-        return True
-    else:
-        print(f"❌ Erro ao atualizar {parquet_file} no GitHub:", r.text)
+        if r.status_code in [200, 201]:
+            st.toast(f"✅ Arquivo '{parquet_file}' atualizado com sucesso no GitHub.")
+            return True
+        else:
+            st.toast(f"❌ Erro ao atualizar o GitHub: {r.text}")
+            return False
+
+    except Exception as e:
+        st.toast(f"❌ Erro inesperado ao enviar para o GitHub: {e}")
         return False
 
-def calcular_tmo_por_dia(df):
+def calcular_tmo_por_dia(df: pd.DataFrame) -> pd.DataFrame:
     df['Dia'] = pd.to_datetime(df['DATA DE CONCLUSÃO DA TAREFA']).dt.date
-    df_finalizados = df[df['SITUAÇÃO DA TAREFA'].isin(['Finalizada', 'Cancelada'])].copy()
-    
-    # Agrupando por dia
+    df['SITUAÇÃO DA TAREFA'] = df['SITUAÇÃO DA TAREFA'].str.upper()
+    df['TEMPO MÉDIO OPERACIONAL'] = pd.to_timedelta(df['TEMPO MÉDIO OPERACIONAL'], errors='coerce')
+
+    df_finalizados = df[df['SITUAÇÃO DA TAREFA'].isin(['FINALIZADA', 'CANCELADA'])].copy()
+
     df_tmo = df_finalizados.groupby('Dia').agg(
-        Tempo_Total=('TEMPO MÉDIO OPERACIONAL', 'sum'),  # Soma total do tempo
-        Total_Finalizados_Cancelados=('SITUAÇÃO DA TAREFA', 'count')  # Total de tarefas finalizadas ou canceladas
+        Tempo_Total=('TEMPO MÉDIO OPERACIONAL', 'sum'),
+        Total_Finalizados_Cancelados=('SITUAÇÃO DA TAREFA', 'count')
     ).reset_index()
 
-    # Calcula o TMO (Tempo Médio Operacional)
     df_tmo['TMO'] = df_tmo['Tempo_Total'] / df_tmo['Total_Finalizados_Cancelados']
-    
-    # Formata o tempo médio no formato HH:MM:SS
-    df_tmo['TMO'] = df_tmo['TMO'].apply(format_timedelta)
-    return df_tmo[['Dia', 'TMO']]
+
+    # Cria coluna formatada separada
+    df_tmo['TMO_Formatado'] = df_tmo['TMO'].apply(format_timedelta)
+
+    return df_tmo[['Dia', 'TMO', 'TMO_Formatado']]
 
 def calcular_tmo_por_dia_geral(df):
     # Certifica-se de que a coluna de data está no formato correto
@@ -163,13 +184,32 @@ def calcular_produtividade_diaria_cadastro(df):
 
     # Agrupa e soma os status para calcular a produtividade
     df_produtividade_cadastro = df.groupby('Dia').agg(
-        Finalizado=('FINALIZAÇÃO', lambda x: x[x == 'CADASTRADO'].count()),
-        Atualizado=('FINALIZAÇÃO', lambda x: x[x == 'ATUALIZADO'].count())
+        Finalizado=('FINALIZAÇÃO', lambda x: x[x == 'Cadastro realizado'].count()),
     ).reset_index()
 
     # Calcula a produtividade total
-    df_produtividade_cadastro['Produtividade'] = + df_produtividade_cadastro['Finalizado'] + df_produtividade_cadastro['Atualizado']
+    df_produtividade_cadastro['Produtividade'] = + df_produtividade_cadastro['Finalizado']
     return df_produtividade_cadastro
+
+def calcular_produtividade_diaria_subsidios(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula a produtividade diária apenas para as filas que contenham 'Elaborar Subsídios'.
+    A contagem considera tarefas finalizadas com qualquer status.
+    """
+
+    # Garante que a coluna de data esteja corretamente formatada
+    df['Dia'] = pd.to_datetime(df['DATA DE CONCLUSÃO DA TAREFA']).dt.date
+
+    # Filtra apenas as filas de subsídios
+    df_subsidios = df[df['FILA'].str.contains(r'Elaborar\s+(Subsídios|Subsidios)', case=False, na=False, regex=True)]
+
+    # Filtra tarefas finalizadas
+    df_subsidios = df_subsidios[df_subsidios['SITUAÇÃO DA TAREFA'].str.upper() == 'FINALIZADA']
+
+    # Agrupa por dia e conta quantas tarefas finalizadas houve
+    df_produtividade_subsidios = df_subsidios.groupby('Dia').size().reset_index(name='Produtividade')
+
+    return df_produtividade_subsidios
 
 def convert_to_timedelta_for_calculations(df):
     df['TEMPO MÉDIO OPERACIONAL'] = pd.to_timedelta(df['TEMPO MÉDIO OPERACIONAL'], errors='coerce')
@@ -185,6 +225,14 @@ def format_timedelta(td):
     total_seconds = int(td.total_seconds())
     minutes, seconds = divmod(total_seconds, 60)
     return f"{minutes} min {seconds}s"
+
+def format_time_delta_hms(td):
+    if pd.isnull(td):
+        return "00:00:00"
+    total_seconds = int(td.total_seconds())
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 def format_timedelta_grafico_tmo(td):
     if pd.isnull(td):
@@ -580,98 +628,60 @@ def get_points_of_attention(df):
 
     return pontos_de_atencao
 
-import pandas as pd
-
-import pandas as pd
-
-def calcular_tmo_por_carteira(df):
+def calcular_tmo_por_carteira(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calcula o Tempo Médio Operacional (TMO) por carteira, separando o TMO de Cadastro e o TMO de Atualização.
-    Para a fila "Distribuição", o cálculo do TMO considera todas as tarefas finalizadas como "REALIZADO".
+    Gera um resumo por Fila com:
+    - Quantidade total de tarefas
+    - TMO médio para tarefas finalizadas (exceto Fora do Escopo)
+    - TMO médio para tarefas com finalização 'Fora do Escopo'
 
-    Parâmetros:
-        df (pd.DataFrame): DataFrame contendo as colunas 'FILA', 'TEMPO MÉDIO OPERACIONAL', 
-                           'FINALIZAÇÃO' e 'NÚMERO DO PROTOCOLO'.
-
-    Retorno:
-        pd.DataFrame: DataFrame contendo as colunas 'FILA', 'Quantidade', 'Cadastrado', 'Atualizado',
-                      'Fora do Escopo', 'TMO Cadastro' e 'TMO Atualização'.
+    Retorna:
+        pd.DataFrame com colunas:
+        ['FILA', 'Quantidade de Tarefas', 'TMO Finalizadas', 'TMO Fora do Escopo']
     """
-    # Verifica se as colunas necessárias estão no DataFrame
-    required_columns = {'FILA', 'TEMPO MÉDIO OPERACIONAL', 'FINALIZAÇÃO', 'NÚMERO DO PROTOCOLO'}
-    if not required_columns.issubset(df.columns):
-        return "As colunas necessárias não foram encontradas no DataFrame."
 
-    # Remove linhas com valores NaN na coluna 'TEMPO MÉDIO OPERACIONAL'
-    df = df.dropna(subset=['TEMPO MÉDIO OPERACIONAL'])
-
-    # Verifica se os valores da coluna 'TEMPO MÉDIO OPERACIONAL' são do tipo timedelta
-    if not pd.api.types.is_timedelta64_dtype(df['TEMPO MÉDIO OPERACIONAL']):
-        return "A coluna 'TEMPO MÉDIO OPERACIONAL' contém valores que não são do tipo timedelta."
-
-    # Remove duplicatas baseadas no número do protocolo para os casos 'Fora do Escopo'
-    df_unique = df.drop_duplicates(subset=['NÚMERO DO PROTOCOLO'])
-
-    # Filtrar apenas tarefas "CADASTRADO" e "ATUALIZADO" (exceto Distribuição)
-    df_tmo = df[df['FINALIZAÇÃO'].isin(['CADASTRADO', 'ATUALIZADO']) & (df['FILA'] != 'Distribuição')]
-
-    # Agrupar por fila para calcular as quantidades e médias separadas
-    tmo_por_carteira = df_tmo.groupby('FILA').agg(
-        Quantidade=('FILA', 'size'),
-        Cadastrado=('FINALIZAÇÃO', lambda x: (x == 'CADASTRADO').sum()),
-        Atualizado=('FINALIZAÇÃO', lambda x: (x == 'ATUALIZADO').sum()),
-    ).reset_index()
-
-    # Calcular TMO apenas para "CADASTRADO"
-    df_cadastro = df[df['FINALIZAÇÃO'] == 'CADASTRADO'].groupby('FILA')['TEMPO MÉDIO OPERACIONAL'].mean().reset_index()
-    df_cadastro.rename(columns={'TEMPO MÉDIO OPERACIONAL': 'TMO Cadastro'}, inplace=True)
-
-    # Calcular TMO apenas para "ATUALIZADO"
-    df_atualizacao = df[df['FINALIZAÇÃO'] == 'ATUALIZADO'].groupby('FILA')['TEMPO MÉDIO OPERACIONAL'].mean().reset_index()
-    df_atualizacao.rename(columns={'TEMPO MÉDIO OPERACIONAL': 'TMO Atualização'}, inplace=True)
-
-    # Calcular TMO para a fila "Distribuição" considerando apenas "REALIZADO"
-    df_distribuicao = df[(df['FILA'] == 'Distribuição') & (df['FINALIZAÇÃO'] == 'REALIZADO')]
-
-    if not df_distribuicao.empty:
-        tmo_distribuicao = df_distribuicao.groupby('FILA').agg(
-            Quantidade=('FILA', 'size'),
-            TMO_Distribuicao=('TEMPO MÉDIO OPERACIONAL', 'mean')
-        ).reset_index()
-        tmo_distribuicao.rename(columns={'TMO_Distribuicao': 'TMO Cadastro'}, inplace=True)
-        tmo_distribuicao['TMO Atualização'] = None  # A fila "Distribuição" não tem TMO Atualização
-    else:
-        tmo_distribuicao = pd.DataFrame(columns=['FILA', 'Quantidade', 'TMO Cadastro', 'TMO Atualização'])
-
-    # Unir os dados ao DataFrame principal
-    tmo_por_carteira = tmo_por_carteira.merge(df_cadastro, on='FILA', how='left')
-    tmo_por_carteira = tmo_por_carteira.merge(df_atualizacao, on='FILA', how='left')
-
-    # Adicionar a fila "Distribuição" ao resultado final
-    tmo_por_carteira = pd.concat([tmo_por_carteira, tmo_distribuicao], ignore_index=True)
-
-    # Calcular 'Fora do Escopo' considerando apenas protocolos únicos
-    fora_do_escopo_contagem = df_unique.groupby('FILA').apply(
-        lambda x: x.shape[0] - (x['FINALIZAÇÃO'] == 'CADASTRADO').sum() - (x['FINALIZAÇÃO'] == 'ATUALIZADO').sum()
-    ).reset_index(name='Fora do Escopo')
-
-    # Mesclar a contagem de 'Fora do Escopo'
-    tmo_por_carteira = tmo_por_carteira.merge(fora_do_escopo_contagem, on='FILA', how='left')
-
-    # Converter os tempos médios para HH:MM:SS
     def format_timedelta(td):
         if pd.isna(td):
             return "00:00:00"
         total_seconds = int(td.total_seconds())
         return f"{total_seconds // 3600:02d}:{(total_seconds % 3600) // 60:02d}:{total_seconds % 60:02d}"
 
-    tmo_por_carteira['TMO Cadastro'] = tmo_por_carteira['TMO Cadastro'].apply(format_timedelta)
-    tmo_por_carteira['TMO Atualização'] = tmo_por_carteira['TMO Atualização'].apply(format_timedelta)
+    # Validação das colunas obrigatórias
+    required_columns = {'FILA', 'SITUAÇÃO DA TAREFA', 'FINALIZAÇÃO', 'TEMPO MÉDIO OPERACIONAL'}
+    if not required_columns.issubset(df.columns):
+        return "As colunas necessárias não foram encontradas no DataFrame."
 
-    # Selecionar apenas as colunas finais
-    tmo_por_carteira = tmo_por_carteira[['FILA', 'Quantidade', 'Cadastrado', 'Atualizado', 'Fora do Escopo', 'TMO Cadastro', 'TMO Atualização']]
+    # Remove linhas sem tempo registrado
+    df = df.dropna(subset=['TEMPO MÉDIO OPERACIONAL'])
 
-    return tmo_por_carteira
+    if not pd.api.types.is_timedelta64_dtype(df['TEMPO MÉDIO OPERACIONAL']):
+        return "A coluna 'TEMPO MÉDIO OPERACIONAL' precisa ser do tipo timedelta."
+
+    # Contagem total de tarefas por fila
+    quantidade_tarefas = df.groupby('FILA').size().reset_index(name='Quantidade de Tarefas')
+
+    # TMO de tarefas finalizadas (exceto Fora do Escopo)
+    df_finalizadas = df[
+        (df['SITUAÇÃO DA TAREFA'].str.upper() == 'FINALIZADA') &
+        (df['FINALIZAÇÃO'].str.upper() != 'FORA DO ESCOPO')
+    ]
+    tmo_finalizadas = df_finalizadas.groupby('FILA')['TEMPO MÉDIO OPERACIONAL'].mean().reset_index()
+    tmo_finalizadas.rename(columns={'TEMPO MÉDIO OPERACIONAL': 'TMO Finalizadas'}, inplace=True)
+
+    # TMO de tarefas Fora do Escopo
+    df_escopo = df[df['FINALIZAÇÃO'].str.upper() == 'FORA DO ESCOPO']
+    tmo_escopo = df_escopo.groupby('FILA')['TEMPO MÉDIO OPERACIONAL'].mean().reset_index()
+    tmo_escopo.rename(columns={'TEMPO MÉDIO OPERACIONAL': 'TMO Fora do Escopo'}, inplace=True)
+
+    # Junta tudo
+    resumo = quantidade_tarefas.merge(tmo_finalizadas, on='FILA', how='left')\
+                               .merge(tmo_escopo, on='FILA', how='left')
+
+    # Formata os campos de tempo
+    resumo['TMO Finalizadas'] = resumo['TMO Finalizadas'].apply(format_timedelta)
+    resumo['TMO Fora do Escopo'] = resumo['TMO Fora do Escopo'].apply(format_timedelta)
+
+    return resumo[['FILA', 'Quantidade de Tarefas', 'TMO Finalizadas', 'TMO Fora do Escopo']]
 
 def calcular_producao_agrupada(df):
     required_columns = {'FILA', 'FINALIZAÇÃO', 'NÚMERO DO PROTOCOLO'}
@@ -846,7 +856,7 @@ def calcular_tmo_por_mes(df):
     df['AnoMes'] = df['DATA DE CONCLUSÃO DA TAREFA'].dt.to_period('M')
     
     # Filtrar apenas os protocolos com status 'FINALIZADO'
-    df_finalizados = df[df['FINALIZAÇÃO'].isin(['CADASTRADO', 'ATUALIZADO', 'REALIZADO'])]
+    df_finalizados = df[df['SITUAÇÃO DA TAREFA'].isin(['Finalizada'])]
     
     # Agrupar por AnoMes e calcular o TMO
     df_tmo_mes = df_finalizados.groupby('AnoMes').agg(
@@ -1081,10 +1091,10 @@ def calcular_grafico_tmo_analista_por_mes(df_analista):
     if not pd.api.types.is_timedelta64_dtype(df_analista['TEMPO MÉDIO OPERACIONAL']):
         df_analista['TEMPO MÉDIO OPERACIONAL'] = pd.to_timedelta(df_analista['TEMPO MÉDIO OPERACIONAL'], errors='coerce')
 
-    df_analista['AnoMes'] = df_analista['DATA DE CONCLUSÃO DA TAREFA'].dt.to_period('M')
+    df_analista['AnoMes'] = df_analista['DATA DE CONCLUSÃO DA TAREFA'].dt.to_period('M').astype(str)
 
-    df_geral = df_analista[df_analista['FINALIZAÇÃO'].isin(['CADASTRADO', 'ATUALIZADO', 'REALIZADO'])]
-    df_cadastro = df_analista[df_analista['FINALIZAÇÃO'] == 'CADASTRADO']
+    df_geral = df_analista[df_analista['SITUAÇÃO DA TAREFA'].isin(['Finalizada', 'Cancelada'])]
+    df_cadastro = df_analista[df_analista['FINALIZAÇÃO'] == 'Cadastro realizado']
     df_atualizacao = df_analista[df_analista['FINALIZAÇÃO'] == 'ATUALIZADO']
 
     def calcular_tmo(df, nome_coluna):

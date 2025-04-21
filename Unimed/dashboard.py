@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-from .calculations import calcular_tmo_equipe_cadastro, calcular_e_exibir_tmo_cadastro_atualizacao_por_fila, format_timedelta_hms,exibir_grafico_tmo_analista_por_mes, format_timedelta_grafico_tmo_analista, exibir_grafico_tempo_ocioso_por_dia, calcular_producao_email_detalhada, calcular_producao_agrupada, exportar_planilha_com_tmo_completo, gerar_relatorio_html, download_html, download_html_tmo, gerar_relatorio_html_tmo, load_sla_data, calcular_sla_por_fila, gerar_planilha_sla, calcular_entrada_protocolos_por_dia, calcular_entrada_por_dia_e_fila, exibir_entrada_por_dia, save_sla_data, calcular_tmo_equipe_atualizado, calcular_produtividade_diaria, calcular_tmo_por_dia_cadastro, calcular_produtividade_diaria_cadastro, calcular_tmo_por_dia, convert_to_timedelta_for_calculations, convert_to_datetime_for_calculations, save_data, load_data, format_timedelta, calcular_ranking, calcular_filas_analista, calcular_metrica_analista, calcular_carteiras_analista,exportar_relatorio_detalhado_por_analista, get_points_of_attention, calcular_tmo_por_carteira, calcular_tmo, calcular_e_exibir_tmo_por_fila, calcular_tmo_por_mes, exibir_tmo_por_mes, exibir_dataframe_tmo_formatado, export_dataframe, calcular_tempo_ocioso_por_analista, calcular_melhor_tmo_por_dia, calcular_melhor_dia_por_cadastro, exibir_tmo_por_mes_analista, exportar_planilha_com_tmo, calcular_tmo_geral, calcular_tmo_cadastro, calcular_tempo_ocioso, gerar_relatorio_tmo_completo
-from .charts import plot_produtividade_diaria, plot_tmo_por_dia_cadastro, plot_tmo_por_dia_cadastro, exibir_grafico_tp_causa, plot_produtividade_diaria_cadastros, plot_tmo_por_dia, plot_status_pie, grafico_tmo, grafico_status_analista, exibir_grafico_filas_realizadas, exibir_grafico_tmo_por_dia, exibir_grafico_quantidade_por_dia
+from .calculations import calcular_tmo_equipe_cadastro, format_time_delta_hms, calcular_e_exibir_tmo_cadastro_atualizacao_por_fila, format_timedelta_hms,exibir_grafico_tmo_analista_por_mes, format_timedelta_grafico_tmo_analista, exibir_grafico_tempo_ocioso_por_dia, calcular_producao_email_detalhada, calcular_producao_agrupada, exportar_planilha_com_tmo_completo, gerar_relatorio_html, download_html, download_html_tmo, gerar_relatorio_html_tmo, load_sla_data, calcular_sla_por_fila, gerar_planilha_sla, calcular_entrada_protocolos_por_dia, calcular_entrada_por_dia_e_fila, exibir_entrada_por_dia, save_sla_data, calcular_tmo_equipe_atualizado, calcular_produtividade_diaria, calcular_tmo_por_dia_cadastro, calcular_produtividade_diaria_cadastro, calcular_tmo_por_dia, convert_to_timedelta_for_calculations, convert_to_datetime_for_calculations, save_data, load_data, format_timedelta, calcular_ranking, calcular_filas_analista, calcular_metrica_analista, calcular_carteiras_analista,exportar_relatorio_detalhado_por_analista, get_points_of_attention, calcular_tmo_por_carteira, calcular_tmo, calcular_e_exibir_tmo_por_fila, calcular_tmo_por_mes, exibir_tmo_por_mes, exibir_dataframe_tmo_formatado, export_dataframe, calcular_tempo_ocioso_por_analista, calcular_melhor_tmo_por_dia, calcular_melhor_dia_por_cadastro, exibir_tmo_por_mes_analista, exportar_planilha_com_tmo, calcular_tmo_geral, calcular_tmo_cadastro, calcular_tempo_ocioso, gerar_relatorio_tmo_completo, calcular_produtividade_diaria_subsidios
+from .charts import plot_produtividade_diaria, plot_tmo_por_dia_cadastro, plot_tmo_por_dia_cadastro, exibir_grafico_tp_causa, plot_produtividade_diaria_cadastros, plot_tmo_por_dia, plot_status_pie, grafico_tmo, grafico_status_analista, exibir_grafico_filas_realizadas, exibir_grafico_tmo_por_dia, exibir_grafico_quantidade_por_dia, plot_produtividade_diaria_subsidios
 from datetime import datetime
 
 def dashboard():
@@ -131,9 +131,9 @@ def dashboard():
         st.sidebar.success(f'Arquivo "{uploaded_file.name}" carregado com sucesso!')
         sucesso = save_data(df_total, usuario_logado)
         if sucesso:
-            st.sidebar.toast("Backup no GitHub concluído com sucesso!", icon="✅")
+            st.toast("Backup no GitHub concluído com sucesso!", icon="✅")
         else:
-            st.sidebar.toast("Erro ao fazer backup no GitHub.", icon="❌")
+            st.toast("Erro ao fazer backup no GitHub.", icon="❌")
         
 
     if usuario_logado == "andrew@unimed" and not hasattr(st.session_state, 'bianca_welcomed'):
@@ -155,7 +155,7 @@ def dashboard():
             # Definições para o tema claro
             "light": {
                 "theme.base": "light",  # Tema base claro
-                "theme.primaryColor": "#ff521a",  # Cor primária
+                "theme.primaryColor": "#00985c",  # Cor primária
                 "theme.backgroundColor": "#FFFFFF",
                 "theme.secondaryBackgroundColor": "#F0F2F6",  # Cor de fundo
                 "theme.textColor": "#31333F",  # Cor do texto
@@ -166,7 +166,7 @@ def dashboard():
             # Definições para o tema escuro
             "dark": {
                 "theme.base": "dark",  # Tema base escuro
-                "theme.primaryColor": "#ff521a",  # Cor primária
+                "theme.primaryColor": "#00985c",  # Cor primária
                 "theme.backgroundColor": "black",
                 "theme.secondaryBackgroundColor": "#262730",  # Cor de fundo
                 "theme.textColor": "white",  # Cor do texto
@@ -213,6 +213,8 @@ def dashboard():
         
     custom_colors = ['#ff571c', '#7f2b0e', '#4c1908', '#ff884d', '#a34b28', '#331309']
     
+    custom_colors_unimed = ['#00985c', '#007f4d', '#00b272', '#006645', '#33cc99', '#004d36']
+    
     if opcao_selecionada == "Visão Geral":
         
         st.title("Produtividade Geral" + " " + "" + " " + ":material/groups:")
@@ -234,15 +236,15 @@ def dashboard():
         df_total = df_total[(df_total['DATA DE CONCLUSÃO DA TAREFA'].dt.date >= data_inicial) & (df_total['DATA DE CONCLUSÃO DA TAREFA'].dt.date <= data_final)]
 
         # Métricas de produtividade
-        total_finalizados = len(df_total[df_total['SITUAÇÃO DA TAREFA'] == 'Finalizada'])
-        total_atualizados = len(df_total[df_total['FINALIZAÇÃO'] == 'ATUALIZADO'])
+        total_finalizados = len(df_total[df_total['FINALIZAÇÃO'] == 'Cadastro realizado'])
+        total_atualizados = len(df_total[df_total['SITUAÇÃO DA TAREFA'] == 'Cancelada'])
         total_distribuidos = len(df_total[df_total['FINALIZAÇÃO'] == 'REALIZADO'])
         total_geral = total_finalizados + total_atualizados + total_distribuidos
 
         # Calcular tempo médio geral, verificando se o total geral é maior que zero
         if total_geral > 0:
             tempo_medio = (
-                df_total[df_total['SITUAÇÃO DA TAREFA'] == 'Finalizada']['TEMPO MÉDIO OPERACIONAL'].sum() +
+                df_total[df_total['FINALIZAÇÃO'] == 'Cadastro realizado']['TEMPO MÉDIO OPERACIONAL'].sum() +
                 df_total[df_total['FINALIZAÇÃO'] == 'ATUALIZADO']['TEMPO MÉDIO OPERACIONAL'].sum() +
                 df_total[df_total['FINALIZAÇÃO'] == 'REALIZADO']['TEMPO MÉDIO OPERACIONAL'].sum()
             ) / total_geral
@@ -252,7 +254,7 @@ def dashboard():
         # Calcular tempo médio de cadastros, verificando se o total de cadastros é maior que zero
         if total_finalizados > 0:
             tempo_medio_cadastros = (
-                df_total[df_total['FINALIZAÇÃO'] == 'CADASTRADO']['TEMPO MÉDIO OPERACIONAL'].sum()
+                df_total[df_total['FINALIZAÇÃO'] == 'Cadastro realizado']['TEMPO MÉDIO OPERACIONAL'].sum()
             ) / total_finalizados
         else:
             tempo_medio_cadastros = pd.Timedelta(0)
@@ -287,13 +289,13 @@ def dashboard():
         col1, col2, col3 = st.columns(3)
         with col1:
             with st.container(border=True):
-                st.metric("Total Geral", total_geral, delta=f"Tempo Médio - " + format_timedelta(tempo_medio), delta_color="off", help="Engloba todas as tarefas finalizadas e exibe o tempo médio geral.")
+                st.metric("Métricas de Cadastro", total_geral, delta=f"Tempo Médio - " + format_time_delta_hms(tempo_medio), delta_color="off", help="Engloba todas as tarefas finalizadas e exibe o tempo médio geral.")
         with col2:
             with st.container(border=True):
-                st.metric("Total Cadastrado", total_finalizados, delta=f"Tempo Médio - " + format_timedelta(tempo_medio_cadastros), delta_color="off", help="Tempo médio das tarefas cadastradas.")
+                st.metric("Métricas de Cadastro", total_finalizados, delta=f"Tempo Médio - " + format_time_delta_hms(tempo_medio_cadastros), delta_color="off", help="Tempo médio das tarefas cadastradas.")
         with col3:
             with st.container(border=True):
-                st.metric("Total Atualizado", total_atualizados, delta=f"Tempo Médio - " + format_timedelta(tempo_medio_autalizacoes), delta_color="off", help="Tempo médio das tarefas atualizadas.")
+                st.metric("Métricas de Subsídios", total_atualizados, delta=f"Tempo Médio - " + format_timedelta(tempo_medio_autalizacoes), delta_color="off", help="Tempo médio das tarefas atualizadas.")
         
         # Expander com Total Geral --- Sendo a soma de todos os cadastros, reclassificados e andamentos
         with st.expander("Tempo Médio por Fila"):
@@ -303,48 +305,42 @@ def dashboard():
             else:
                 st.dataframe(df_tmo_por_carteira, use_container_width=True, hide_index=True)
         
-        # Exibição na Dashboard
-        with st.expander("Produção - Resumo por Grupo"):
-            df_producao_agrupada = calcular_producao_agrupada(df_total)
-            if isinstance(df_producao_agrupada, str):
-                st.write(df_producao_agrupada)
-            else:
-                st.dataframe(df_producao_agrupada, use_container_width=True, hide_index=True)
-
-        with st.expander("Produção - Detalhamento Grupo E-MAIL"):
-            df_producao_email = calcular_producao_email_detalhada(df_total)
-            if isinstance(df_producao_email, str):
-                st.write(df_producao_email)
-            else:
-                st.dataframe(df_producao_email, use_container_width=True, hide_index=True)
-        
         # Calculando e exibindo gráficos
         df_produtividade = calcular_produtividade_diaria(df_total)
         
         df_produtividade_cadastro = calcular_produtividade_diaria_cadastro(df_total)
         
-        df_tmo = calcular_tmo_por_dia(df_total)  # Certifique-se de que essa função retorne os dados necessários para o gráfico
+        df_produtividade_subsidios = calcular_produtividade_diaria_subsidios(df_total)
         
-        df_tmo_cadastro = calcular_tmo_por_dia_cadastro(df_total)  # Certifique-se de que essa função retorne os dados necessários para o gráfico
+        df_tmo = calcular_tmo_por_dia(df_total) 
+        
+        df_tmo_cadastro = calcular_tmo_por_dia_cadastro(df_total)  
         
         col1, col2 = st.columns(2)
         
         with col1:
             
-            tab1, tab2 = st.tabs(["Produtividade Diária", "Cadastros e Atualizações Diários"])
+            tab1, tab2, tab3 = st.tabs(["Produtividade Diária", "Produtividade Diária - Cadastros", "Produtividade Diária - Subsídios"])
             
             with tab1:
-
                 with st.container(border=True):
-                    st.subheader("Produtividade Diária - Total das Tarefas Finalizadas")
-                    fig_produtividade = plot_produtividade_diaria(df_produtividade, custom_colors)
+                    st.subheader("Produtividade Diária - Total das Tarefas Tratadas")
+                    fig_produtividade = plot_produtividade_diaria(df_produtividade, custom_colors_unimed)
                     if fig_produtividade:
                         st.plotly_chart(fig_produtividade)
             
             with tab2:
                 with st.container(border=True):
-                    st.subheader("Produtividade Diária - Cadastros e Atualizações")
-                    fig_produtividade = plot_produtividade_diaria_cadastros(df_produtividade_cadastro, custom_colors)
+                    st.subheader("Produtividade Diária - Tarefas Cadastradas")
+                    fig_produtividade = plot_produtividade_diaria_cadastros(df_produtividade_cadastro, custom_colors_unimed)
+                    if fig_produtividade:
+                        st.plotly_chart(fig_produtividade)
+            
+            with tab3:
+                
+                with st.container(border=True):
+                    st.subheader("Produtividade Diária - Subsídios")                     
+                    fig_produtividade = plot_produtividade_diaria_subsidios(df_produtividade_subsidios, custom_colors_unimed)
                     if fig_produtividade:
                         st.plotly_chart(fig_produtividade)
                         
@@ -643,7 +639,7 @@ def dashboard():
         with st.expander("Evolução TMO"):
             st.subheader(f"Tempo Médio Operacional Mensal")
             exibir_grafico_tmo_analista_por_mes(df_analista, analista_selecionado)
-        
+
         col1, col2 = st.columns(2)
         with col1:
             # Gráfico de TMO por dia usando a função do `graph.py`

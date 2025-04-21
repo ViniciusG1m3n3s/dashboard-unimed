@@ -5,7 +5,7 @@ import streamlit as st
 import plotly.graph_objs as go
 import streamlit as st
 
-def plot_produtividade_diaria(df_produtividade, custom_colors):
+def plot_produtividade_diaria(df_produtividade, custom_colors_unimed):
     if df_produtividade.empty or 'Dia' not in df_produtividade.columns or 'Produtividade' not in df_produtividade.columns:
         st.warning("Não há dados para exibir no gráfico de produtividade diária.")
         return None
@@ -35,7 +35,7 @@ def plot_produtividade_diaria(df_produtividade, custom_colors):
         df_filtrado,
         x='Dia',
         y='Produtividade',
-        color_discrete_sequence=custom_colors,
+        color_discrete_sequence=custom_colors_unimed,
         labels={'Produtividade': 'Total de Cadastros', 'Dia': 'Data'},
         line_shape='linear',
         markers=True
@@ -115,56 +115,103 @@ def plot_produtividade_diaria_cadastros(df_produtividade_cadastro, custom_colors
     # Exibir o gráfico na dashboard
     st.plotly_chart(fig, use_container_width=True)
 
-import plotly.express as px
-import pandas as pd
-import streamlit as st
+def plot_produtividade_diaria_subsidios(df_produtividade, custom_colors_unimed):
+    if df_produtividade.empty or 'Dia' not in df_produtividade.columns or 'Produtividade' not in df_produtividade.columns:
+        st.warning("Não há dados para exibir no gráfico de produtividade diária de subsídios.")
+        return None
 
-def plot_tmo_por_dia(df_tmo, custom_colors):
+    # Ordenar e definir período mínimo e máximo
+    df_produtividade = df_produtividade.sort_values(by='Dia')
+    data_minima = df_produtividade['Dia'].min()
+    data_maxima = df_produtividade['Dia'].max()
+
+    # Slider interativo
+    periodo_selecionado = st.slider(
+        "Selecione o período de análise (Subsídios)",
+        min_value=data_minima,
+        max_value=data_maxima,
+        value=(data_maxima - pd.Timedelta(days=21), data_maxima),
+        format="DD MMM YYYY"
+    )
+
+    # Filtrar por período selecionado
+    df_filtrado = df_produtividade[
+        (df_produtividade['Dia'] >= periodo_selecionado[0]) &
+        (df_produtividade['Dia'] <= periodo_selecionado[1])
+    ]
+
+    # Criar gráfico de linha com pontos
+    fig = px.line(
+        df_filtrado,
+        x='Dia',
+        y='Produtividade',
+        labels={'Produtividade': 'Tarefas de Subsídios', 'Dia': 'Data'},
+        line_shape='linear',
+        markers=True
+    )
+
+    # Aplica cor personalizada
+    fig.update_traces(line=dict(color=custom_colors_unimed[0]), marker=dict(color=custom_colors_unimed[0]))
+
+    # Hover e layout
+    fig.update_traces(
+        hovertemplate='Data = %{x|%d/%m/%Y}<br>Produtividade = %{y}'
+    )
+
+    fig.update_layout(
+        xaxis=dict(
+            tickvals=df_filtrado['Dia'],
+            ticktext=[f"{dia.day}/{dia.month}/{dia.year}" for dia in df_filtrado['Dia']],
+            title='Data'
+        ),
+        yaxis=dict(
+            title='Total de Tarefas'
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def plot_tmo_por_dia(df_tmo: pd.DataFrame, custom_colors: list):
     if df_tmo.empty or 'Dia' not in df_tmo.columns or 'TMO' not in df_tmo.columns:
         st.warning("Não há dados para exibir no gráfico de TMO por dia.")
         return None
 
-    # Garantir que não existam NaN ou valores inválidos na coluna 'TMO'
+    # Remove TMO nulo ou inválido
     df_tmo = df_tmo.dropna(subset=['TMO'])
 
-    # Converter TMO para formato HH:MM:SS
-    df_tmo['TMO_Formatado'] = df_tmo['TMO'].apply(
-        lambda x: f"{int(x.total_seconds() // 3600):02}:{int((x.total_seconds() % 3600) // 60):02}:{int(x.total_seconds() % 60):02}" 
-        if pd.notnull(x) else "00:00:00"
-    )
-
-    # Definir período mínimo e máximo para o slider
+    # Garante ordenação por data
     df_tmo = df_tmo.sort_values(by='Dia')
     data_minima = df_tmo['Dia'].min()
     data_maxima = df_tmo['Dia'].max()
 
-    # Criar slider interativo (nome único para evitar conflito)
+    # Define intervalo padrão do slider
+    valor_default = (data_maxima - pd.Timedelta(days=30), data_maxima) if (data_maxima - data_minima).days > 30 else (data_minima, data_maxima)
+
     periodo_tmo_selecionado = st.slider(
         "Selecione o período para TMO por Dia",
         min_value=data_minima,
         max_value=data_maxima,
-        value=(data_maxima - pd.Timedelta(days=30), data_maxima),
+        value=valor_default,
         format="DD MMM YYYY"
     )
 
-    # Filtrar os dados pelo período selecionado
+    # Filtra pelo período
     df_tmo_filtrado = df_tmo[
         (df_tmo['Dia'] >= periodo_tmo_selecionado[0]) &
         (df_tmo['Dia'] <= periodo_tmo_selecionado[1])
     ]
 
-    # Criar gráfico de linha com pontos
+    # Constrói o gráfico
     fig_tmo_linha = px.line(
         df_tmo_filtrado,
         x='Dia',
-        y=df_tmo_filtrado['TMO'].dt.total_seconds() / 60,  # Converter TMO para minutos
+        y=df_tmo_filtrado['TMO'].dt.total_seconds() / 60,
         labels={'y': 'Tempo Médio Operacional (min)', 'Dia': 'Data'},
         color_discrete_sequence=custom_colors,
         line_shape='linear',
         markers=True
     )
 
-    # Melhorar a formatação do hover e eixo X
     fig_tmo_linha.update_traces(
         text=df_tmo_filtrado['TMO_Formatado'],
         textposition='top center',
@@ -183,7 +230,6 @@ def plot_tmo_por_dia(df_tmo, custom_colors):
     )
 
     return fig_tmo_linha
-
 
 def plot_tmo_por_dia_cadastro(df_tmo_cadastro, custom_colors):
     if df_tmo_cadastro.empty or 'Dia' not in df_tmo_cadastro.columns or 'TMO' not in df_tmo_cadastro.columns:
@@ -436,10 +482,6 @@ def format_timedelta_Chart(td):
     minutes = int(total_seconds // 60)
     seconds = int(total_seconds % 60)
     return f"{minutes} min {seconds}s"
-
-
-import plotly.express as px
-import pandas as pd
 
 def exibir_grafico_tmo_por_dia(df_analista, analista_selecionado, calcular_tmo_por_dia, custom_colors, st):
     """
