@@ -29,14 +29,14 @@ def login():
         background: 
             linear-gradient(
                 to left,
-                rgba(211, 33, 0, 0.7),
-                rgba(175, 15, 26, 0.7),
-                rgba(136, 12, 33, 0.7),
-                rgba(96, 15, 33, 0.7),
-                rgba(54, 4, 38, 0.7),
-                rgba(84, 0, 117, 0.7)
+                rgba(0, 152, 92, 0.6),   /* Verde claro */
+                rgba(0, 122, 74, 0.6),   /* Um pouco mais escuro */
+                rgba(0, 92, 56, 0.6),
+                rgba(0, 72, 44, 0.6),
+                rgba(0, 52, 32, 0.6),
+                rgba(0, 32, 20, 0.6)    /* Verde quase preto */
             ),
-            url("https://i.pinimg.com/originals/ef/c3/85/efc3857811ea0813316475b79af16c7c.jpg");
+            url("https://i.imgur.com/KEY4ZkS.png");
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
