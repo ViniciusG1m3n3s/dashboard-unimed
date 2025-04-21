@@ -5,6 +5,7 @@ import math
 import streamlit as st
 from io import BytesIO
 import requests
+import base64
 from datetime import timedelta
 
 def load_data(usuario):
