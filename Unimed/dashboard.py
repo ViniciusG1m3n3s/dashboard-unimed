@@ -129,6 +129,11 @@ def dashboard():
         df_total = pd.concat([df_total, df_new], ignore_index=True)
         save_data(df_total, usuario_logado)
         st.sidebar.success(f'Arquivo "{uploaded_file.name}" carregado com sucesso!')
+        sucesso = save_data(df_total, usuario_logado)
+        if sucesso:
+            st.sidebar.toast("Backup no GitHub concluído com sucesso!", icon="✅")
+        else:
+            st.sidebar.toast("Erro ao fazer backup no GitHub.", icon="❌")
         
 
     if usuario_logado == "andrew@unimed" and not hasattr(st.session_state, 'bianca_welcomed'):

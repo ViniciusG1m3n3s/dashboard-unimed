@@ -61,14 +61,14 @@ def save_data(df, usuario):
 
     # 🚀 ENVIO AUTOMÁTICO PARA O GITHUB
 
-    # Lê as variáveis de ambiente (deixe configuradas no Render ou .env local)
+    # Lê as variáveis de ambiente
     token = os.getenv("GITHUB_TOKEN")
     repo = os.getenv("GITHUB_REPO")
     branch = os.getenv("GITHUB_BRANCH", "main")
 
     if not all([token, repo]):
         print("⚠️ Token ou repositório GitHub não configurados. Pulando upload.")
-        return
+        return False
 
     # Caminho na API do GitHub
     api_url = f"https://api.github.com/repos/{repo}/contents/{parquet_file}"
@@ -100,8 +100,10 @@ def save_data(df, usuario):
 
     if r.status_code in [200, 201]:
         print(f"✅ {parquet_file} atualizado no GitHub.")
+        return True
     else:
         print(f"❌ Erro ao atualizar {parquet_file} no GitHub:", r.text)
+        return False
 
 def calcular_tmo_por_dia(df):
     df['Dia'] = pd.to_datetime(df['DATA DE CONCLUSÃO DA TAREFA']).dt.date
